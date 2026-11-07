@@ -25,19 +25,9 @@ struct UsageView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            header
-
-            if let snapshot = store.snapshot {
-                ForEach(snapshot.rows) { UsageRowView(row: $0) }
-            } else if store.isLoading {
-                ProgressView().controlSize(.small).frame(maxWidth: .infinity)
-            }
-
-            if let error = store.errorMessage {
-                Label(error, systemImage: "exclamationmark.triangle.fill")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-                    .fixedSize(horizontal: false, vertical: true)
+            ForEach(Array(store.providers.enumerated()), id: \.element) { index, provider in
+                if index > 0 { Divider() }
+                ProviderSection(provider: provider, state: store.state(provider))
             }
 
             Divider()
@@ -46,20 +36,6 @@ struct UsageView: View {
         .padding(16)
         .frame(width: 300)
         .onAppear { store.refresh() }
-    }
-
-    private var header: some View {
-        HStack {
-            Text("Claude usage").font(.headline)
-            Spacer()
-            if let plan = store.snapshot?.plan {
-                Text(plan.capitalized)
-                    .font(.caption.weight(.medium))
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 2)
-                    .background(.quaternary, in: Capsule())
-            }
-        }
     }
 
     private var footer: some View {
@@ -80,12 +56,6 @@ struct UsageView: View {
             }
             .help("Refresh now")
             Button {
-                NSWorkspace.shared.open(URL(string: "https://claude.ai/settings/usage")!)
-            } label: {
-                Image(systemName: "safari")
-            }
-            .help("Open claude.ai usage page")
-            Button {
                 NSApp.terminate(nil)
             } label: {
                 Image(systemName: "power")
@@ -100,6 +70,59 @@ struct UsageView: View {
         let seconds = now.timeIntervalSince(updated)
         if seconds < 60 { return "Updated just now" }
         return "Updated \(Int(seconds / 60)) min ago"
+    }
+}
+
+// MARK: - Provider section
+
+struct ProviderSection: View {
+    let provider: Provider
+    let state: ProviderState
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            header
+
+            if let snapshot = state.snapshot {
+                ForEach(snapshot.rows) { UsageRowView(row: $0) }
+                if let note = snapshot.note {
+                    Label(note, systemImage: "clock.arrow.circlepath")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            } else if state.isLoading {
+                ProgressView().controlSize(.small).frame(maxWidth: .infinity)
+            }
+
+            if let error = state.errorMessage, state.snapshot?.note == nil {
+                Label(error, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private var header: some View {
+        HStack(spacing: 6) {
+            Text("\(provider.name) usage").font(.headline)
+            Spacer()
+            if let plan = state.snapshot?.plan {
+                Text(plan.capitalized)
+                    .font(.caption.weight(.medium))
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 2)
+                    .background(.quaternary, in: Capsule())
+            }
+            Button {
+                NSWorkspace.shared.open(provider.usagePage)
+            } label: {
+                Image(systemName: "arrow.up.right.square")
+            }
+            .buttonStyle(.borderless)
+            .help("Open \(provider.name) usage page")
+        }
     }
 }
 

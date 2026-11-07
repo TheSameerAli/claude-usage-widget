@@ -27,6 +27,8 @@ struct UsageRow: Identifiable {
 struct UsageSnapshot {
     let rows: [UsageRow]
     let plan: String?
+    /// Shown under the rows, e.g. when the data comes from a fallback source.
+    var note: String? = nil
 
     var session: UsageRow? { rows.first { $0.kind == "session" } }
     var weekly: UsageRow? { rows.first { $0.kind == "weekly_all" } }
