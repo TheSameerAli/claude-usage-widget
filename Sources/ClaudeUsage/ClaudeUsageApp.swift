@@ -5,6 +5,16 @@ import SwiftUI
 struct ClaudeUsageApp: App {
     @StateObject private var store = UsageStore()
 
+    init() {
+        // Only one copy may run: two copies poll the same endpoints with the same token and get rate limited.
+        let me = NSRunningApplication.current
+        if let id = Bundle.main.bundleIdentifier,
+           NSRunningApplication.runningApplications(withBundleIdentifier: id)
+               .contains(where: { $0.processIdentifier != me.processIdentifier }) {
+            exit(0)
+        }
+    }
+
     var body: some Scene {
         MenuBarExtra {
             UsageView(store: store)

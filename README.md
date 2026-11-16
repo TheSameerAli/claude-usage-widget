@@ -9,7 +9,7 @@ A tiny native macOS menu bar app that shows your Claude and Codex plan usage at 
 
 **Codex:** it reads the ChatGPT login that Codex stores in `~/.codex/auth.json` (or `$CODEX_HOME`) and calls the same endpoint that Codex's `/status` uses. If that fails (offline, expired token), it shows the last rate-limit snapshot from Codex's session logs and says so. The Codex section only appears if `~/.codex` exists.
 
-It refreshes every 5 minutes, each time you open the panel (at most once a minute), and on wake from sleep. Tokens are never refreshed, copied, or written anywhere.
+It refreshes every 5 minutes, each time you open the panel (at most once every 2 minutes), and on wake from sleep. If a usage API rate-limits it (HTTP 429), it keeps showing the last data and backs off for that provider (5, 10, 20, 40, then 60 minutes, or longer if the server's `Retry-After` asks). Only one copy of the app runs at a time. Tokens are never refreshed, copied, or written anywhere.
 
 ## Install
 

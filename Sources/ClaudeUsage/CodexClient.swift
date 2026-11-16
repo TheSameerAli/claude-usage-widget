@@ -5,7 +5,6 @@ import Foundation
 enum CodexError: LocalizedError {
     case notLoggedIn
     case tokenExpired
-    case rateLimited
     case http(Int)
     case badResponse
 
@@ -13,7 +12,6 @@ enum CodexError: LocalizedError {
         switch self {
         case .notLoggedIn: return "No Codex login found. Run `codex` and log in with ChatGPT."
         case .tokenExpired: return "Codex login token expired. Open Codex once to refresh it."
-        case .rateLimited: return "Rate limited by the Codex usage API. Will retry shortly."
         case .http(let code): return "Codex usage API returned HTTP \(code)."
         case .badResponse: return "Unexpected response from the Codex usage API."
         }
@@ -96,7 +94,7 @@ enum CodexClient {
         switch http.statusCode {
         case 200: break
         case 401, 403: throw CodexError.tokenExpired
-        case 429: throw CodexError.rateLimited
+        case 429: throw RateLimited(service: "Codex", response: http)
         default: throw CodexError.http(http.statusCode)
         }
 

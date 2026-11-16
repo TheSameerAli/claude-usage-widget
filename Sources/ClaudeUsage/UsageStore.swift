@@ -33,6 +33,10 @@ struct ProviderState {
     var errorMessage: String?
     var lastUpdated: Date?
     var isLoading = false
+    /// After a 429, no requests go to this provider before this time, even from the refresh button.
+    var backoffUntil: Date?
+    /// 429s in a row, for exponential backoff. Reset on success.
+    var rateLimitStrikes = 0
 }
 
 @MainActor
@@ -42,7 +46,9 @@ final class UsageStore: ObservableObject {
     /// Background poll interval. The usage endpoints rate-limit aggressive polling, so stay conservative.
     private let pollInterval: TimeInterval = 5 * 60
     /// Opening the panel triggers a refresh, but no more often than this.
-    private let minRefreshInterval: TimeInterval = 60
+    private let minRefreshInterval: TimeInterval = 2 * 60
+    /// Longest wait after repeated 429s.
+    private let maxBackoff: TimeInterval = 60 * 60
 
     private var lastAttempt: Date?
     private var timer: Timer?
@@ -77,7 +83,9 @@ final class UsageStore: ObservableObject {
         if !force, let last = lastAttempt, Date().timeIntervalSince(last) < minRefreshInterval { return }
         lastAttempt = Date()
 
+        let now = Date()
         for provider in providers where !state(provider).isLoading {
+            if let until = state(provider).backoffUntil, until > now { continue }
             states[provider, default: ProviderState()].isLoading = true
             Task {
                 var s = state(provider)
@@ -85,6 +93,19 @@ final class UsageStore: ObservableObject {
                     s.snapshot = try await provider.fetch()
                     s.lastUpdated = Date()
                     s.errorMessage = nil
+                    s.backoffUntil = nil
+                    s.rateLimitStrikes = 0
+                } catch let error as RateLimited {
+                    // 5, 10, 20, 40, 60 min… or longer if the server asks for it.
+                    s.rateLimitStrikes += 1
+                    let exponential = pollInterval * pow(2, Double(s.rateLimitStrikes - 1))
+                    let delay = min(max(exponential, error.retryAfter ?? 0), maxBackoff)
+                    let until = Date().addingTimeInterval(delay)
+                    s.backoffUntil = until
+                    let time = until.formatted(date: .omitted, time: .shortened)
+                    s.errorMessage = s.snapshot == nil
+                        ? "\(error.errorDescription ?? "Rate limited.") Trying again at \(time)."
+                        : "\(error.errorDescription ?? "Rate limited.") Showing the last data; trying again at \(time)."
                 } catch {
                     s.errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
                 }

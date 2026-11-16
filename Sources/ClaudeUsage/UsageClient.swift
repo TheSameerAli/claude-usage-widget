@@ -39,7 +39,6 @@ struct UsageSnapshot {
 enum UsageError: LocalizedError {
     case notLoggedIn
     case tokenExpired
-    case rateLimited
     case http(Int)
     case badResponse
 
@@ -47,9 +46,32 @@ enum UsageError: LocalizedError {
         switch self {
         case .notLoggedIn: return "No Claude Code login found. Run `claude` and log in."
         case .tokenExpired: return "Login token expired. Open Claude Code once to refresh it."
-        case .rateLimited: return "Rate limited by the usage API. Will retry shortly."
         case .http(let code): return "Usage API returned HTTP \(code)."
         case .badResponse: return "Unexpected response from the usage API."
+        }
+    }
+}
+
+/// Thrown by either client on HTTP 429. The store backs off before trying that provider again.
+struct RateLimited: LocalizedError {
+    let service: String
+    /// From the server's Retry-After header, if it sent one.
+    let retryAfter: TimeInterval?
+
+    var errorDescription: String? { "Rate limited by the \(service) usage API." }
+
+    init(service: String, response: HTTPURLResponse) {
+        self.service = service
+        let header = response.value(forHTTPHeaderField: "Retry-After")?.trimmingCharacters(in: .whitespaces)
+        if let header, let seconds = TimeInterval(header) {
+            retryAfter = seconds
+        } else if let header {
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
+            retryAfter = formatter.date(from: header).map { $0.timeIntervalSinceNow }
+        } else {
+            retryAfter = nil
         }
     }
 }
@@ -113,7 +135,7 @@ enum UsageClient {
         switch http.statusCode {
         case 200: break
         case 401, 403: throw UsageError.tokenExpired
-        case 429: throw UsageError.rateLimited
+        case 429: throw RateLimited(service: "Claude", response: http)
         default: throw UsageError.http(http.statusCode)
         }
 
